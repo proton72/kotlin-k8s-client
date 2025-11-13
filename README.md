@@ -455,11 +455,11 @@ try {
 
 ## Requirements
 
-- Kotlin 1.9.22 or higher
+- Kotlin 2.2.20 or higher
 - Java 17 or higher
-- Ktor 2.3.7
-- Kotlinx Serialization 1.6.2
-- Kotlinx Coroutines 1.7.3
+- Ktor 3.3.2
+- Kotlinx Serialization 1.8.0
+- Kotlinx Coroutines 1.10.1
 
 ## License
 
