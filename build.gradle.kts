@@ -66,6 +66,23 @@ publishing {
                         name.set("Proton72")
                     }
                 }
+
+                scm {
+                    connection.set("scm:git:git://github.com/proton72/kotlin-k8s-client.git")
+                    developerConnection.set("scm:git:ssh://github.com/proton72/kotlin-k8s-client.git")
+                    url.set("https://github.com/proton72/kotlin-k8s-client")
+                }
+            }
+        }
+    }
+
+    repositories {
+        maven {
+            name = "GitHubPackages"
+            url = uri("https://maven.pkg.github.com/proton72/kotlin-k8s-client")
+            credentials {
+                username = System.getenv("GITHUB_ACTOR") ?: project.findProperty("gpr.user") as String?
+                password = System.getenv("GITHUB_TOKEN") ?: project.findProperty("gpr.token") as String?
             }
         }
     }
