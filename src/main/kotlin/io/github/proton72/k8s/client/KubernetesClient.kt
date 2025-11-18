@@ -10,6 +10,9 @@ import io.ktor.client.request.*
 import io.ktor.client.statement.*
 import io.ktor.http.*
 import io.ktor.serialization.kotlinx.json.*
+import io.ktor.utils.io.*
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.flow
 import kotlinx.serialization.json.Json
 import org.slf4j.Logger
 import org.slf4j.LoggerFactory
@@ -447,6 +450,219 @@ class KubernetesClient(
             spec = deployment.spec?.copy(replicas = replicas)
         )
         return updateDeployment(updatedDeployment, namespace)
+    }
+
+    // ==================== Watch Operations ====================
+
+    /**
+     * Watches pods in the specified namespace for changes.
+     *
+     * @param namespace Kubernetes namespace (defaults to the service account namespace)
+     * @param labelSelector Label selector to filter pods
+     * @param resourceVersion Resource version to start watching from
+     * @return Flow of WatchEvent<Pod> representing changes to pods
+     */
+    fun watchPods(
+        namespace: String = defaultNamespace,
+        labelSelector: String? = null,
+        resourceVersion: String? = null
+    ): Flow<WatchEvent<Pod>> {
+        logger.debug("Watching pods in namespace: $namespace with selector: $labelSelector")
+        var url = "$apiServer/api/v1/namespaces/$namespace/pods?watch=true"
+        labelSelector?.let {
+            url += "&labelSelector=${it.encodeURLParameter()}"
+        }
+        resourceVersion?.let {
+            url += "&resourceVersion=${it.encodeURLParameter()}"
+        }
+        return watchResource(url)
+    }
+
+    /**
+     * Watches all pods across all namespaces for changes.
+     *
+     * @param labelSelector Label selector to filter pods
+     * @param resourceVersion Resource version to start watching from
+     * @return Flow of WatchEvent<Pod> representing changes to pods
+     */
+    fun watchAllPods(
+        labelSelector: String? = null,
+        resourceVersion: String? = null
+    ): Flow<WatchEvent<Pod>> {
+        logger.debug("Watching all pods with selector: $labelSelector")
+        var url = "$apiServer/api/v1/pods?watch=true"
+        labelSelector?.let {
+            url += "&labelSelector=${it.encodeURLParameter()}"
+        }
+        resourceVersion?.let {
+            url += "&resourceVersion=${it.encodeURLParameter()}"
+        }
+        return watchResource(url)
+    }
+
+    /**
+     * Watches services in the specified namespace for changes.
+     *
+     * @param namespace Kubernetes namespace (defaults to the service account namespace)
+     * @param labelSelector Label selector to filter services
+     * @param resourceVersion Resource version to start watching from
+     * @return Flow of WatchEvent<Service> representing changes to services
+     */
+    fun watchServices(
+        namespace: String = defaultNamespace,
+        labelSelector: String? = null,
+        resourceVersion: String? = null
+    ): Flow<WatchEvent<Service>> {
+        logger.debug("Watching services in namespace: $namespace with selector: $labelSelector")
+        var url = "$apiServer/api/v1/namespaces/$namespace/services?watch=true"
+        labelSelector?.let {
+            url += "&labelSelector=${it.encodeURLParameter()}"
+        }
+        resourceVersion?.let {
+            url += "&resourceVersion=${it.encodeURLParameter()}"
+        }
+        return watchResource(url)
+    }
+
+    /**
+     * Watches deployments in the specified namespace for changes.
+     *
+     * @param namespace Kubernetes namespace (defaults to the service account namespace)
+     * @param labelSelector Label selector to filter deployments
+     * @param resourceVersion Resource version to start watching from
+     * @return Flow of WatchEvent<Deployment> representing changes to deployments
+     */
+    fun watchDeployments(
+        namespace: String = defaultNamespace,
+        labelSelector: String? = null,
+        resourceVersion: String? = null
+    ): Flow<WatchEvent<Deployment>> {
+        logger.debug("Watching deployments in namespace: $namespace with selector: $labelSelector")
+        var url = "$apiServer/apis/apps/v1/namespaces/$namespace/deployments?watch=true"
+        labelSelector?.let {
+            url += "&labelSelector=${it.encodeURLParameter()}"
+        }
+        resourceVersion?.let {
+            url += "&resourceVersion=${it.encodeURLParameter()}"
+        }
+        return watchResource(url)
+    }
+
+    /**
+     * Internal method to watch a resource and emit events as a Flow.
+     */
+    private inline fun <reified T> watchResource(url: String): Flow<WatchEvent<T>> = flow {
+        try {
+            val response = httpClient.prepareGet(url) {
+                headers {
+                    append("Authorization", "Bearer $token")
+                }
+            }.execute { httpResponse ->
+                if (httpResponse.status.value !in 200..299) {
+                    val errorBody = try {
+                        httpResponse.bodyAsText()
+                    } catch (e: Exception) {
+                        "Unable to read error body"
+                    }
+                    throw KubernetesApiException(httpResponse.status.value, errorBody)
+                }
+
+                val channel: ByteReadChannel = httpResponse.bodyAsChannel()
+                val json = Json {
+                    ignoreUnknownKeys = true
+                    isLenient = true
+                }
+
+                while (!channel.isClosedForRead) {
+                    val line = channel.readUTF8Line() ?: break
+                    if (line.isNotBlank()) {
+                        try {
+                            val event = json.decodeFromString<WatchEvent<T>>(line)
+                            emit(event)
+                        } catch (e: Exception) {
+                            logger.error("Failed to parse watch event: $line", e)
+                        }
+                    }
+                }
+            }
+        } catch (e: KubernetesException) {
+            throw e
+        } catch (e: Exception) {
+            throw KubernetesException("Watch failed: ${e.message}", e)
+        }
+    }
+
+    // ==================== Log Operations ====================
+
+    /**
+     * Gets logs from a pod container.
+     *
+     * @param name Name of the pod
+     * @param namespace Kubernetes namespace (defaults to the service account namespace)
+     * @param container Name of the container (optional, defaults to first container)
+     * @param follow Whether to follow (stream) the logs
+     * @param previous Whether to get logs from previous terminated container
+     * @param sinceSeconds Only return logs newer than relative duration in seconds
+     * @param tailLines Number of lines from the end of the logs to show
+     * @param timestamps Include timestamps in log lines
+     * @return Flow of log lines as strings
+     */
+    fun getPodLogs(
+        name: String,
+        namespace: String = defaultNamespace,
+        container: String? = null,
+        follow: Boolean = false,
+        previous: Boolean = false,
+        sinceSeconds: Int? = null,
+        tailLines: Int? = null,
+        timestamps: Boolean = false
+    ): Flow<String> = flow {
+        logger.debug("Getting logs for pod: $name in namespace: $namespace, container: $container, follow: $follow")
+
+        var url = "$apiServer/api/v1/namespaces/$namespace/pods/$name/log?"
+        val params = mutableListOf<String>()
+
+        container?.let { params.add("container=${it.encodeURLParameter()}") }
+        if (follow) params.add("follow=true")
+        if (previous) params.add("previous=true")
+        sinceSeconds?.let { params.add("sinceSeconds=$it") }
+        tailLines?.let { params.add("tailLines=$it") }
+        if (timestamps) params.add("timestamps=true")
+
+        url += params.joinToString("&")
+
+        try {
+            httpClient.prepareGet(url) {
+                headers {
+                    append("Authorization", "Bearer $token")
+                }
+            }.execute { httpResponse ->
+                if (httpResponse.status.value !in 200..299) {
+                    val errorBody = try {
+                        httpResponse.bodyAsText()
+                    } catch (e: Exception) {
+                        "Unable to read error body"
+                    }
+
+                    when (httpResponse.status.value) {
+                        404 -> throw KubernetesNotFoundException("Pod", name)
+                        401, 403 -> throw KubernetesAuthenticationException("Unauthorized: ${httpResponse.status}")
+                        else -> throw KubernetesApiException(httpResponse.status.value, errorBody)
+                    }
+                }
+
+                val channel: ByteReadChannel = httpResponse.bodyAsChannel()
+
+                while (!channel.isClosedForRead) {
+                    val line = channel.readUTF8Line() ?: break
+                    emit(line)
+                }
+            }
+        } catch (e: KubernetesException) {
+            throw e
+        } catch (e: Exception) {
+            throw KubernetesException("Failed to get logs: ${e.message}", e)
+        }
     }
 
     /**
