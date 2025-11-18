@@ -29,7 +29,8 @@ data class PodSpec(
     val subdomain: String? = null,
     val affinity: Affinity? = null,
     val tolerations: List<Toleration>? = null,
-    val imagePullSecrets: List<LocalObjectReference>? = null
+    val imagePullSecrets: List<LocalObjectReference>? = null,
+    val securityContext: PodSecurityContext? = null
 )
 
 /**
@@ -47,7 +48,8 @@ data class Container(
     val resources: ResourceRequirements? = null,
     val imagePullPolicy: String? = null,
     val livenessProbe: Probe? = null,
-    val readinessProbe: Probe? = null
+    val readinessProbe: Probe? = null,
+    val securityContext: SecurityContext? = null
 )
 
 @Serializable
@@ -300,6 +302,218 @@ data class ContainerStateTerminated(
     val message: String? = null,
     val startedAt: String? = null,
     val finishedAt: String? = null
+)
+
+/**
+ * PodSecurityContext holds pod-level security attributes and common container settings
+ */
+@Serializable
+data class PodSecurityContext(
+    /**
+     * The UID to run the entrypoint of the container process
+     */
+    val runAsUser: Long? = null,
+
+    /**
+     * The GID to run the entrypoint of the container process
+     */
+    val runAsGroup: Long? = null,
+
+    /**
+     * Indicates that the container must run as a non-root user
+     */
+    val runAsNonRoot: Boolean? = null,
+
+    /**
+     * A list of groups applied to the first process run in each container
+     */
+    val supplementalGroups: List<Long>? = null,
+
+    /**
+     * A special supplemental group that applies to all containers in a pod
+     */
+    val fsGroup: Long? = null,
+
+    /**
+     * The SELinux context to be applied to all containers
+     */
+    val seLinuxOptions: SELinuxOptions? = null,
+
+    /**
+     * Windows specific settings applied to all containers
+     */
+    val windowsOptions: WindowsSecurityContextOptions? = null,
+
+    /**
+     * The seccomp profile to be applied to all containers
+     */
+    val seccompProfile: SeccompProfile? = null,
+
+    /**
+     * Sysctls hold a list of namespaced sysctls used for the pod
+     */
+    val sysctls: List<Sysctl>? = null
+)
+
+/**
+ * SecurityContext holds security configuration for a container
+ */
+@Serializable
+data class SecurityContext(
+    /**
+     * Adds and drops POSIX capabilities from running containers
+     */
+    val capabilities: Capabilities? = null,
+
+    /**
+     * Run container in privileged mode
+     */
+    val privileged: Boolean? = null,
+
+    /**
+     * The SELinux context to be applied to the container
+     */
+    val seLinuxOptions: SELinuxOptions? = null,
+
+    /**
+     * Windows specific settings
+     */
+    val windowsOptions: WindowsSecurityContextOptions? = null,
+
+    /**
+     * The UID to run the entrypoint of the container process
+     */
+    val runAsUser: Long? = null,
+
+    /**
+     * The GID to run the entrypoint of the container process
+     */
+    val runAsGroup: Long? = null,
+
+    /**
+     * Indicates that the container must run as a non-root user
+     */
+    val runAsNonRoot: Boolean? = null,
+
+    /**
+     * Whether a process can gain more privileges than its parent process
+     */
+    val allowPrivilegeEscalation: Boolean? = null,
+
+    /**
+     * The read-only root filesystem
+     */
+    val readOnlyRootFilesystem: Boolean? = null,
+
+    /**
+     * The type of proc mount to use for the container
+     */
+    val procMount: String? = null,
+
+    /**
+     * The seccomp profile to be applied to the container
+     */
+    val seccompProfile: SeccompProfile? = null
+)
+
+/**
+ * Capabilities adds and removes POSIX capabilities from running containers
+ */
+@Serializable
+data class Capabilities(
+    /**
+     * Added capabilities
+     */
+    val add: List<String>? = null,
+
+    /**
+     * Removed capabilities
+     */
+    val drop: List<String>? = null
+)
+
+/**
+ * SELinuxOptions are the labels to be applied to the container
+ */
+@Serializable
+data class SELinuxOptions(
+    /**
+     * Level is SELinux level label
+     */
+    val level: String? = null,
+
+    /**
+     * Role is a SELinux role label
+     */
+    val role: String? = null,
+
+    /**
+     * Type is a SELinux type label
+     */
+    val type: String? = null,
+
+    /**
+     * User is a SELinux user label
+     */
+    val user: String? = null
+)
+
+/**
+ * WindowsSecurityContextOptions contain Windows-specific options and credentials
+ */
+@Serializable
+data class WindowsSecurityContextOptions(
+    /**
+     * GMSACredentialSpecName is the name of the GMSA credential spec to use
+     */
+    val gmsaCredentialSpecName: String? = null,
+
+    /**
+     * GMSACredentialSpec is where the GMSA admission webhook inlines the contents of the GMSA credential spec
+     */
+    val gmsaCredentialSpec: String? = null,
+
+    /**
+     * RunAsUserName is the name of the Windows user to run the entrypoint of the container process
+     */
+    val runAsUserName: String? = null,
+
+    /**
+     * HostProcess determines if a container should be run as a 'Host Process' container
+     */
+    val hostProcess: Boolean? = null
+)
+
+/**
+ * SeccompProfile defines a pod/container's seccomp profile settings
+ */
+@Serializable
+data class SeccompProfile(
+    /**
+     * type indicates which kind of seccomp profile will be applied. Valid values: Localhost, RuntimeDefault, Unconfined
+     */
+    val type: String,
+
+    /**
+     * localhostProfile indicates a profile defined in a file on the node should be used
+     */
+    val localhostProfile: String? = null
+)
+
+/**
+ * Sysctl defines a kernel parameter to be set
+ */
+@Serializable
+data class Sysctl(
+    /**
+     * Name of a property to set
+     */
+    val name: String,
+
+    /**
+     * Value of a property to set
+     */
+    val value: String
 )
 
 /**

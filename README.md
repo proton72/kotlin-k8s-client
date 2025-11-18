@@ -10,7 +10,8 @@ A lightweight, type-safe Kubernetes client library for Kotlin using Ktor HTTP cl
 - **Reactive Streaming**: Watch resources and stream logs using Kotlin Flow
 - **In-cluster support**: Automatic service account authentication when running in Kubernetes
 - **Manual configuration**: Support for custom API server and token configuration
-- **Comprehensive API coverage**: Support for Pods, Services, and Deployments
+- **Comprehensive API coverage**: Support for Pods, Services, Deployments, and ResourceQuotas
+- **Resource Quotas**: Set and monitor namespace resource limits (CPU, memory, pods, etc.)
 - **Watch API**: Real-time monitoring of resource changes (ADDED, MODIFIED, DELETED events)
 - **Pod Logs**: Stream pod logs with follow, tail, timestamps, and filtering options
 - **SSL/TLS support**: Proper certificate validation with custom CA support
@@ -368,6 +369,106 @@ val updatedDeployment = deployment.copy(
 client.updateDeployment(updatedDeployment, "default")
 ```
 
+### ResourceQuota Operations
+
+ResourceQuotas provide constraints that limit aggregate resource consumption per namespace.
+
+#### Get a ResourceQuota
+
+```kotlin
+val quota = client.getResourceQuota("my-quota", "default")
+println("Quota: ${quota.metadata.name}")
+quota.status?.used?.forEach { (resource, used) ->
+    val hard = quota.status?.hard?.get(resource)
+    println("$resource: $used / $hard")
+}
+```
+
+#### List ResourceQuotas
+
+```kotlin
+// List all resource quotas in a namespace
+val quotas = client.listResourceQuotas("default")
+
+quotas.items.forEach { quota ->
+    println("Quota: ${quota.metadata.name}")
+    quota.spec?.hard?.forEach { (resource, limit) ->
+        println("  $resource: $limit")
+    }
+}
+```
+
+#### Create a ResourceQuota
+
+```kotlin
+import io.github.proton72.k8s.model.*
+
+val quota = ResourceQuota(
+    metadata = ObjectMeta(
+        name = "compute-quota"
+    ),
+    spec = ResourceQuotaSpec(
+        hard = mapOf(
+            "requests.cpu" to "10",
+            "requests.memory" to "20Gi",
+            "limits.cpu" to "20",
+            "limits.memory" to "40Gi",
+            "pods" to "50",
+            "services" to "20",
+            "persistentvolumeclaims" to "10",
+            "requests.storage" to "100Gi"
+        )
+    )
+)
+
+val createdQuota = client.createResourceQuota(quota, "default")
+println("Created quota: ${createdQuota.metadata.name}")
+```
+
+#### Delete a ResourceQuota
+
+```kotlin
+client.deleteResourceQuota("my-quota", "default")
+```
+
+#### Update a ResourceQuota
+
+```kotlin
+val quota = client.getResourceQuota("compute-quota", "default")
+val updatedQuota = quota.copy(
+    spec = quota.spec?.copy(
+        hard = mapOf(
+            "requests.cpu" to "20",
+            "requests.memory" to "40Gi",
+            "pods" to "100"
+        )
+    )
+)
+client.updateResourceQuota(updatedQuota, "default")
+```
+
+#### Monitor Resource Usage
+
+```kotlin
+// Check current usage against quota
+val quota = client.getResourceQuota("compute-quota", "default")
+
+println("Resource Quota Status:")
+quota.spec?.hard?.keys?.forEach { resource ->
+    val hard = quota.status?.hard?.get(resource) ?: "N/A"
+    val used = quota.status?.used?.get(resource) ?: "0"
+    println("$resource: $used / $hard")
+
+    // Calculate usage percentage
+    if (hard != "N/A") {
+        val usedValue = used.replace(Regex("[^0-9.]"), "").toDoubleOrNull() ?: 0.0
+        val hardValue = hard.replace(Regex("[^0-9.]"), "").toDoubleOrNull() ?: 1.0
+        val percentage = (usedValue / hardValue * 100).toInt()
+        println("  Usage: $percentage%")
+    }
+}
+```
+
 ### Advanced Examples
 
 #### Create a Complex Pod with Environment Variables and Volumes
@@ -643,6 +744,13 @@ try {
 - `suspend fun deleteDeployment(name: String, namespace: String = defaultNamespace, gracePeriodSeconds: Int = 30, propagationPolicy: String? = null): Status`
 - `suspend fun updateDeployment(deployment: Deployment, namespace: String = defaultNamespace): Deployment`
 - `suspend fun scaleDeployment(name: String, replicas: Int, namespace: String = defaultNamespace): Deployment`
+
+#### ResourceQuota Operations
+- `suspend fun getResourceQuota(name: String, namespace: String = defaultNamespace): ResourceQuota`
+- `suspend fun listResourceQuotas(namespace: String = defaultNamespace, labelSelector: String? = null): ResourceQuotaList`
+- `suspend fun createResourceQuota(resourceQuota: ResourceQuota, namespace: String = defaultNamespace): ResourceQuota`
+- `suspend fun deleteResourceQuota(name: String, namespace: String = defaultNamespace, gracePeriodSeconds: Int = 30, propagationPolicy: String? = null): Status`
+- `suspend fun updateResourceQuota(resourceQuota: ResourceQuota, namespace: String = defaultNamespace): ResourceQuota`
 
 #### Watch Operations
 - `fun watchPods(namespace: String = defaultNamespace, labelSelector: String? = null, resourceVersion: String? = null): Flow<WatchEvent<Pod>>`

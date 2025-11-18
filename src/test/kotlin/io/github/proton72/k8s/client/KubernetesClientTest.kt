@@ -112,6 +112,37 @@ class KubernetesClientTest {
         )
     }
 
+    private fun createTestResourceQuota(name: String = "test-quota"): ResourceQuota {
+        return ResourceQuota(
+            metadata = ObjectMeta(
+                name = name,
+                namespace = "default"
+            ),
+            spec = ResourceQuotaSpec(
+                hard = mapOf(
+                    "requests.cpu" to "4",
+                    "requests.memory" to "16Gi",
+                    "pods" to "10",
+                    "persistentvolumeclaims" to "5"
+                )
+            ),
+            status = ResourceQuotaStatus(
+                hard = mapOf(
+                    "requests.cpu" to "4",
+                    "requests.memory" to "16Gi",
+                    "pods" to "10",
+                    "persistentvolumeclaims" to "5"
+                ),
+                used = mapOf(
+                    "requests.cpu" to "2",
+                    "requests.memory" to "8Gi",
+                    "pods" to "3",
+                    "persistentvolumeclaims" to "2"
+                )
+            )
+        )
+    }
+
     @Test
     fun `test getPod returns pod successfully`() = runTest {
         val testPod = createTestPod()
@@ -754,5 +785,160 @@ class KubernetesClientTest {
         val deserialized = json.decodeFromString<WatchEvent<Pod>>(serialized)
         assertEquals("ADDED", deserialized.type)
         assertEquals("test-pod", deserialized.`object`.metadata.name)
+    }
+
+    @Test
+    fun `test getResourceQuota returns quota successfully`() = runTest {
+        val testQuota = createTestResourceQuota()
+        val responseJson = json.encodeToString(testQuota)
+
+        val mockEngine = MockEngine { request ->
+            assertEquals(HttpMethod.Get, request.method)
+            assertTrue(request.url.toString().contains("/api/v1/namespaces/default/resourcequotas/test-quota"))
+            assertTrue(request.headers.contains("Authorization"))
+
+            respond(
+                content = ByteReadChannel(responseJson),
+                status = HttpStatusCode.OK,
+                headers = headersOf("Content-Type", "application/json")
+            )
+        }
+
+        val httpClient = HttpClient(mockEngine) {
+            install(ContentNegotiation) { json(json) }
+        }
+
+        httpClient.close()
+    }
+
+    @Test
+    fun `test listResourceQuotas returns quota list`() = runTest {
+        val testQuota = createTestResourceQuota()
+        val quotaList = ResourceQuotaList(
+            metadata = ListMeta(),
+            items = listOf(testQuota)
+        )
+        val responseJson = json.encodeToString(quotaList)
+
+        val mockEngine = MockEngine { request ->
+            assertEquals(HttpMethod.Get, request.method)
+            assertTrue(request.url.toString().contains("/api/v1/namespaces/default/resourcequotas"))
+            assertTrue(request.headers.contains("Authorization"))
+
+            respond(
+                content = ByteReadChannel(responseJson),
+                status = HttpStatusCode.OK,
+                headers = headersOf("Content-Type", "application/json")
+            )
+        }
+
+        val httpClient = HttpClient(mockEngine) {
+            install(ContentNegotiation) { json(json) }
+        }
+
+        httpClient.close()
+    }
+
+    @Test
+    fun `test createResourceQuota creates quota successfully`() = runTest {
+        val testQuota = createTestResourceQuota()
+        val responseJson = json.encodeToString(testQuota)
+
+        val mockEngine = MockEngine { request ->
+            assertEquals(HttpMethod.Post, request.method)
+            assertTrue(request.url.toString().contains("/api/v1/namespaces/default/resourcequotas"))
+            assertTrue(request.headers.contains("Authorization"))
+
+            respond(
+                content = ByteReadChannel(responseJson),
+                status = HttpStatusCode.OK,
+                headers = headersOf("Content-Type", "application/json")
+            )
+        }
+
+        val httpClient = HttpClient(mockEngine) {
+            install(ContentNegotiation) { json(json) }
+        }
+
+        httpClient.close()
+    }
+
+    @Test
+    fun `test deleteResourceQuota deletes quota successfully`() = runTest {
+        val status = Status(
+            kind = "Status",
+            apiVersion = "v1",
+            status = "Success",
+            message = "resourcequota \"test-quota\" deleted"
+        )
+        val responseJson = json.encodeToString(status)
+
+        val mockEngine = MockEngine { request ->
+            assertEquals(HttpMethod.Delete, request.method)
+            assertTrue(request.url.toString().contains("/api/v1/namespaces/default/resourcequotas/test-quota"))
+            assertTrue(request.headers.contains("Authorization"))
+
+            respond(
+                content = ByteReadChannel(responseJson),
+                status = HttpStatusCode.OK,
+                headers = headersOf("Content-Type", "application/json")
+            )
+        }
+
+        val httpClient = HttpClient(mockEngine) {
+            install(ContentNegotiation) { json(json) }
+        }
+
+        httpClient.close()
+    }
+
+    @Test
+    fun `test updateResourceQuota updates quota successfully`() = runTest {
+        val testQuota = createTestResourceQuota()
+        val updatedQuota = testQuota.copy(
+            spec = testQuota.spec?.copy(
+                hard = mapOf(
+                    "requests.cpu" to "8",
+                    "requests.memory" to "32Gi",
+                    "pods" to "20"
+                )
+            )
+        )
+        val responseJson = json.encodeToString(updatedQuota)
+
+        val mockEngine = MockEngine { request ->
+            assertEquals(HttpMethod.Put, request.method)
+            assertTrue(request.url.toString().contains("/api/v1/namespaces/default/resourcequotas/test-quota"))
+            assertTrue(request.headers.contains("Authorization"))
+
+            respond(
+                content = ByteReadChannel(responseJson),
+                status = HttpStatusCode.OK,
+                headers = headersOf("Content-Type", "application/json")
+            )
+        }
+
+        val httpClient = HttpClient(mockEngine) {
+            install(ContentNegotiation) { json(json) }
+        }
+
+        httpClient.close()
+    }
+
+    @Test
+    fun `test ResourceQuota serialization`() {
+        val testQuota = createTestResourceQuota()
+
+        val serialized = json.encodeToString(testQuota)
+        assertNotNull(serialized)
+        assertTrue(serialized.contains("test-quota"))
+        assertTrue(serialized.contains("requests.cpu"))
+
+        val deserialized = json.decodeFromString<ResourceQuota>(serialized)
+        assertEquals("test-quota", deserialized.metadata.name)
+        assertEquals("4", deserialized.spec?.hard?.get("requests.cpu"))
+        assertEquals("16Gi", deserialized.spec?.hard?.get("requests.memory"))
+        assertEquals("10", deserialized.spec?.hard?.get("pods"))
+        assertEquals("2", deserialized.status?.used?.get("requests.cpu"))
     }
 }

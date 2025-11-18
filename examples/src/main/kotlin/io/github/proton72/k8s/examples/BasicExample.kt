@@ -144,6 +144,53 @@ fun main() = runBlocking {
         val scaledDeployment = client.scaleDeployment("nginx-example-deployment", replicas = 3)
         println("Scaled deployment to ${scaledDeployment.spec?.replicas} replicas")
 
+        // Create a resource quota
+        println("\n=== Creating Resource Quota ===")
+        val newQuota = ResourceQuota(
+            metadata = ObjectMeta(
+                name = "example-quota"
+            ),
+            spec = ResourceQuotaSpec(
+                hard = mapOf(
+                    "requests.cpu" to "10",
+                    "requests.memory" to "20Gi",
+                    "limits.cpu" to "20",
+                    "limits.memory" to "40Gi",
+                    "pods" to "50",
+                    "services" to "20",
+                    "persistentvolumeclaims" to "10"
+                )
+            )
+        )
+
+        val createdQuota = client.createResourceQuota(newQuota)
+        println("Created resource quota: ${createdQuota.metadata.name}")
+
+        // Get resource quota details
+        println("\n=== Getting Resource Quota Details ===")
+        val quota = client.getResourceQuota("example-quota")
+        println("Resource Quota: ${quota.metadata.name}")
+        println("Hard Limits:")
+        quota.spec?.hard?.forEach { (resource, limit) ->
+            println("  $resource: $limit")
+        }
+        println("Usage:")
+        quota.status?.used?.forEach { (resource, used) ->
+            val hard = quota.status?.hard?.get(resource) ?: "N/A"
+            println("  $resource: $used / $hard")
+        }
+
+        // List all resource quotas
+        println("\n=== Listing Resource Quotas ===")
+        val quotas = client.listResourceQuotas()
+        quotas.items.forEach { q ->
+            println("Quota: ${q.metadata.name}")
+            q.spec?.hard?.forEach { (resource, limit) ->
+                val used = q.status?.used?.get(resource) ?: "0"
+                println("  $resource: $used / $limit")
+            }
+        }
+
         // Watch pods for changes (demonstrate for 10 seconds)
         println("\n=== Watching Pods ===")
         val watchJob = launch {

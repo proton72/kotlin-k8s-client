@@ -452,6 +452,98 @@ class KubernetesClient(
         return updateDeployment(updatedDeployment, namespace)
     }
 
+    // ==================== ResourceQuota Operations ====================
+
+    /**
+     * Gets a resource quota by name in the specified namespace.
+     *
+     * @param name Name of the resource quota
+     * @param namespace Kubernetes namespace (defaults to the service account namespace)
+     * @return The ResourceQuota object
+     * @throws KubernetesNotFoundException if the resource quota is not found
+     */
+    suspend fun getResourceQuota(name: String, namespace: String = defaultNamespace): ResourceQuota {
+        logger.debug("Getting resource quota: $name in namespace: $namespace")
+        val url = "$apiServer/api/v1/namespaces/$namespace/resourcequotas/$name"
+        return executeRequest(HttpMethod.Get, url)
+    }
+
+    /**
+     * Lists all resource quotas in the specified namespace.
+     *
+     * @param namespace Kubernetes namespace (defaults to the service account namespace)
+     * @param labelSelector Label selector to filter resource quotas
+     * @return ResourceQuotaList containing all matching resource quotas
+     */
+    suspend fun listResourceQuotas(
+        namespace: String = defaultNamespace,
+        labelSelector: String? = null
+    ): ResourceQuotaList {
+        logger.debug("Listing resource quotas in namespace: $namespace with selector: $labelSelector")
+        var url = "$apiServer/api/v1/namespaces/$namespace/resourcequotas"
+        labelSelector?.let {
+            url += "?labelSelector=${it.encodeURLParameter()}"
+        }
+        return executeRequest(HttpMethod.Get, url)
+    }
+
+    /**
+     * Creates a new resource quota in the specified namespace.
+     *
+     * @param resourceQuota ResourceQuota object to create
+     * @param namespace Kubernetes namespace (defaults to the service account namespace)
+     * @return The created ResourceQuota object
+     */
+    suspend fun createResourceQuota(
+        resourceQuota: ResourceQuota,
+        namespace: String = defaultNamespace
+    ): ResourceQuota {
+        logger.info("Creating resource quota: ${resourceQuota.metadata.name} in namespace: $namespace")
+        val url = "$apiServer/api/v1/namespaces/$namespace/resourcequotas"
+        return executeRequest(HttpMethod.Post, url, resourceQuota)
+    }
+
+    /**
+     * Deletes a resource quota by name in the specified namespace.
+     *
+     * @param name Name of the resource quota to delete
+     * @param namespace Kubernetes namespace (defaults to the service account namespace)
+     * @param gracePeriodSeconds Grace period for deletion (default: 30)
+     * @param propagationPolicy Propagation policy (e.g., "Foreground", "Background")
+     * @return Status object indicating the result
+     */
+    suspend fun deleteResourceQuota(
+        name: String,
+        namespace: String = defaultNamespace,
+        gracePeriodSeconds: Int = 30,
+        propagationPolicy: String? = null
+    ): Status {
+        logger.info("Deleting resource quota: $name in namespace: $namespace")
+        var url = "$apiServer/api/v1/namespaces/$namespace/resourcequotas/$name"
+        url += "?gracePeriodSeconds=$gracePeriodSeconds"
+        propagationPolicy?.let {
+            url += "&propagationPolicy=${it.encodeURLParameter()}"
+        }
+        return executeRequest(HttpMethod.Delete, url)
+    }
+
+    /**
+     * Updates an existing resource quota.
+     *
+     * @param resourceQuota ResourceQuota object with updated fields
+     * @param namespace Kubernetes namespace (defaults to the service account namespace)
+     * @return The updated ResourceQuota object
+     */
+    suspend fun updateResourceQuota(
+        resourceQuota: ResourceQuota,
+        namespace: String = defaultNamespace
+    ): ResourceQuota {
+        val name = resourceQuota.metadata.name ?: throw KubernetesException("ResourceQuota name is required")
+        logger.info("Updating resource quota: $name in namespace: $namespace")
+        val url = "$apiServer/api/v1/namespaces/$namespace/resourcequotas/$name"
+        return executeRequest(HttpMethod.Put, url, resourceQuota)
+    }
+
     // ==================== Watch Operations ====================
 
     /**
