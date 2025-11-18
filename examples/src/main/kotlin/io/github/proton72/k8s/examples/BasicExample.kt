@@ -3,7 +3,9 @@ package io.github.proton72.k8s.examples
 import io.github.proton72.k8s.client.KubernetesClient
 import io.github.proton72.k8s.exception.KubernetesException
 import io.github.proton72.k8s.model.*
-import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.*
+import kotlinx.coroutines.flow.catch
+import kotlinx.coroutines.flow.take
 
 /**
  * Basic example demonstrating common Kubernetes operations.
@@ -141,6 +143,67 @@ fun main() = runBlocking {
         println("\n=== Scaling Deployment ===")
         val scaledDeployment = client.scaleDeployment("nginx-example-deployment", replicas = 3)
         println("Scaled deployment to ${scaledDeployment.spec?.replicas} replicas")
+
+        // Watch pods for changes (demonstrate for 10 seconds)
+        println("\n=== Watching Pods ===")
+        val watchJob = launch {
+            client.watchPods(labelSelector = "example=true")
+                .catch { e ->
+                    println("Watch error: ${e.message}")
+                }
+                .collect { event ->
+                    println("Watch Event: ${event.type} - Pod: ${event.`object`.metadata.name}, Phase: ${event.`object`.status?.phase}")
+                }
+        }
+
+        // Let the watch run for a few seconds
+        delay(10000)
+        watchJob.cancel()
+        println("Stopped watching pods")
+
+        // Get pod logs (get last 10 lines)
+        println("\n=== Getting Pod Logs ===")
+        try {
+            launch {
+                client.getPodLogs(
+                    name = "nginx-example",
+                    tailLines = 10,
+                    timestamps = true
+                )
+                    .catch { e ->
+                        println("Error getting logs: ${e.message}")
+                    }
+                    .take(10) // Take only first 10 lines
+                    .collect { line ->
+                        println("Log: $line")
+                    }
+            }.join()
+        } catch (e: Exception) {
+            println("Note: Pod logs may not be available yet if the pod is still starting")
+        }
+
+        // Example: Follow pod logs in real-time (commented out to avoid long-running example)
+        /*
+        println("\n=== Following Pod Logs ===")
+        val logJob = launch {
+            client.getPodLogs(
+                name = "nginx-example",
+                follow = true,
+                timestamps = true
+            )
+                .catch { e ->
+                    println("Error following logs: ${e.message}")
+                }
+                .collect { line ->
+                    println("Log: $line")
+                }
+        }
+
+        // Follow logs for 30 seconds
+        delay(30000)
+        logJob.cancel()
+        println("Stopped following logs")
+        */
 
         // Clean up (uncomment if you want to delete resources after testing)
         /*

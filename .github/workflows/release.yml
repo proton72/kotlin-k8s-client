@@ -9,6 +9,7 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: write
+      packages: write
 
     steps:
     - name: Checkout code
@@ -55,8 +56,11 @@ jobs:
     - name: Build library
       run: gradle build --no-daemon --stacktrace
 
-    - name: Publish to Maven Local (placeholder)
-      run: gradle publishToMavenLocal --no-daemon --stacktrace
+    - name: Publish to GitHub Packages
+      env:
+        GITHUB_ACTOR: ${{ github.actor }}
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      run: gradle publish --no-daemon --stacktrace
 
     - name: Upload build artifacts
       uses: actions/upload-artifact@v4

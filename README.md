@@ -7,38 +7,96 @@ A lightweight, type-safe Kubernetes client library for Kotlin using Ktor HTTP cl
 - **Type-safe**: Strongly typed Kubernetes resource models
 - **Lightweight**: Built on Ktor HTTP client with minimal dependencies
 - **Coroutine-based**: Fully asynchronous using Kotlin coroutines
+- **Reactive Streaming**: Watch resources and stream logs using Kotlin Flow
 - **In-cluster support**: Automatic service account authentication when running in Kubernetes
 - **Manual configuration**: Support for custom API server and token configuration
 - **Comprehensive API coverage**: Support for Pods, Services, and Deployments
+- **Watch API**: Real-time monitoring of resource changes (ADDED, MODIFIED, DELETED events)
+- **Pod Logs**: Stream pod logs with follow, tail, timestamps, and filtering options
 - **SSL/TLS support**: Proper certificate validation with custom CA support
 
 ## Installation
 
-### Gradle (Kotlin DSL)
+### GitHub Packages
+
+This library is published to GitHub Packages. You need to authenticate to use it.
+
+#### Gradle (Kotlin DSL)
 
 ```kotlin
+repositories {
+    maven {
+        url = uri("https://maven.pkg.github.com/proton72/kotlin-k8s-client")
+        credentials {
+            username = project.findProperty("gpr.user") as String? ?: System.getenv("GITHUB_ACTOR")
+            password = project.findProperty("gpr.token") as String? ?: System.getenv("GITHUB_TOKEN")
+        }
+    }
+}
+
 dependencies {
     implementation("io.github.proton72:kotlin-k8s-client:1.0.0")
 }
 ```
 
-### Gradle (Groovy)
+#### Gradle (Groovy)
 
 ```groovy
+repositories {
+    maven {
+        url = uri("https://maven.pkg.github.com/proton72/kotlin-k8s-client")
+        credentials {
+            username = project.findProperty("gpr.user") ?: System.getenv("GITHUB_ACTOR")
+            password = project.findProperty("gpr.token") ?: System.getenv("GITHUB_TOKEN")
+        }
+    }
+}
+
 dependencies {
     implementation 'io.github.proton72:kotlin-k8s-client:1.0.0'
 }
 ```
 
-### Maven
+#### Maven
+
+Add to your `settings.xml`:
 
 ```xml
+<servers>
+  <server>
+    <id>github</id>
+    <username>YOUR_GITHUB_USERNAME</username>
+    <password>YOUR_GITHUB_TOKEN</password>
+  </server>
+</servers>
+```
+
+Add to your `pom.xml`:
+
+```xml
+<repositories>
+  <repository>
+    <id>github</id>
+    <url>https://maven.pkg.github.com/proton72/kotlin-k8s-client</url>
+  </repository>
+</repositories>
+
 <dependency>
     <groupId>io.github.proton72</groupId>
     <artifactId>kotlin-k8s-client</artifactId>
     <version>1.0.0</version>
 </dependency>
 ```
+
+#### Authentication
+
+To authenticate, create a GitHub Personal Access Token with `read:packages` scope and set it as:
+- Environment variables: `GITHUB_ACTOR` and `GITHUB_TOKEN`
+- Gradle properties in `~/.gradle/gradle.properties`:
+  ```properties
+  gpr.user=YOUR_GITHUB_USERNAME
+  gpr.token=YOUR_GITHUB_TOKEN
+  ```
 
 ## Usage
 
@@ -380,32 +438,165 @@ val pod = Pod(
 client.createPod(pod, "default")
 ```
 
-#### Watch Pod Status
+### Watch Operations
+
+Watch resources for real-time changes using Kotlin Flow.
+
+#### Watch Pods
 
 ```kotlin
-import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.catch
+import kotlinx.coroutines.launch
 
-suspend fun waitForPodReady(client: KubernetesClient, podName: String, namespace: String) {
-    while (true) {
-        val pod = client.getPod(podName, namespace)
-        val phase = pod.status?.phase
-
-        when (phase) {
-            "Running" -> {
-                println("Pod is running")
-                break
-            }
-            "Failed", "Unknown" -> {
-                println("Pod failed: ${pod.status?.message}")
-                break
-            }
-            else -> {
-                println("Pod status: $phase")
-                delay(2000)
+// Watch pods in a namespace
+val watchJob = launch {
+    client.watchPods(namespace = "default", labelSelector = "app=myapp")
+        .catch { e -> println("Watch error: ${e.message}") }
+        .collect { event ->
+            println("Event: ${event.type} - Pod: ${event.`object`.metadata.name}")
+            when (event.type) {
+                "ADDED" -> println("New pod created")
+                "MODIFIED" -> println("Pod updated: ${event.`object`.status?.phase}")
+                "DELETED" -> println("Pod deleted")
             }
         }
-    }
 }
+
+// Watch all pods across all namespaces
+client.watchAllPods(labelSelector = "app=myapp")
+    .collect { event ->
+        println("${event.type}: ${event.`object`.metadata.name} in ${event.`object`.metadata.namespace}")
+    }
+
+// Cancel watching
+watchJob.cancel()
+```
+
+#### Watch Services
+
+```kotlin
+client.watchServices(namespace = "default")
+    .collect { event ->
+        println("Service ${event.type}: ${event.`object`.metadata.name}")
+        println("Cluster IP: ${event.`object`.spec?.clusterIP}")
+    }
+```
+
+#### Watch Deployments
+
+```kotlin
+client.watchDeployments(namespace = "default", labelSelector = "environment=production")
+    .collect { event ->
+        val deployment = event.`object`
+        println("Deployment ${event.type}: ${deployment.metadata.name}")
+        println("Replicas: ${deployment.status?.readyReplicas}/${deployment.spec?.replicas}")
+    }
+```
+
+### Pod Logs
+
+Get and stream pod logs with various options.
+
+#### Get Recent Logs
+
+```kotlin
+import kotlinx.coroutines.flow.collect
+
+// Get last 100 lines of logs
+client.getPodLogs(
+    name = "my-pod",
+    namespace = "default",
+    tailLines = 100,
+    timestamps = true
+).collect { line ->
+    println(line)
+}
+```
+
+#### Follow Logs in Real-Time
+
+```kotlin
+import kotlinx.coroutines.launch
+
+// Stream logs continuously
+val logJob = launch {
+    client.getPodLogs(
+        name = "my-pod",
+        namespace = "default",
+        follow = true,
+        timestamps = true
+    )
+        .catch { e -> println("Error: ${e.message}") }
+        .collect { line ->
+            println(line)
+        }
+}
+
+// Stop following logs when done
+delay(60000) // Follow for 60 seconds
+logJob.cancel()
+```
+
+#### Get Logs from Specific Container
+
+```kotlin
+// For multi-container pods
+client.getPodLogs(
+    name = "my-pod",
+    namespace = "default",
+    container = "app-container",
+    tailLines = 50
+).collect { line ->
+    println(line)
+}
+```
+
+#### Get Logs from Previous Container
+
+```kotlin
+// Useful when a container has crashed
+client.getPodLogs(
+    name = "my-pod",
+    namespace = "default",
+    previous = true,
+    tailLines = 100
+).collect { line ->
+    println(line)
+}
+```
+
+#### Filter Logs by Time
+
+```kotlin
+// Get logs from last 5 minutes (300 seconds)
+client.getPodLogs(
+    name = "my-pod",
+    namespace = "default",
+    sinceSeconds = 300,
+    timestamps = true
+).collect { line ->
+    println(line)
+}
+```
+
+#### Advanced Log Monitoring
+
+```kotlin
+import kotlinx.coroutines.flow.filter
+import kotlinx.coroutines.flow.map
+
+// Filter and process logs
+client.getPodLogs(
+    name = "my-pod",
+    namespace = "default",
+    follow = true
+)
+    .filter { line -> line.contains("ERROR") || line.contains("WARN") }
+    .map { line -> "⚠️ $line" }
+    .collect { line ->
+        println(line)
+        // Send alert, log to file, etc.
+    }
 ```
 
 ### Error Handling
@@ -452,6 +643,15 @@ try {
 - `suspend fun deleteDeployment(name: String, namespace: String = defaultNamespace, gracePeriodSeconds: Int = 30, propagationPolicy: String? = null): Status`
 - `suspend fun updateDeployment(deployment: Deployment, namespace: String = defaultNamespace): Deployment`
 - `suspend fun scaleDeployment(name: String, replicas: Int, namespace: String = defaultNamespace): Deployment`
+
+#### Watch Operations
+- `fun watchPods(namespace: String = defaultNamespace, labelSelector: String? = null, resourceVersion: String? = null): Flow<WatchEvent<Pod>>`
+- `fun watchAllPods(labelSelector: String? = null, resourceVersion: String? = null): Flow<WatchEvent<Pod>>`
+- `fun watchServices(namespace: String = defaultNamespace, labelSelector: String? = null, resourceVersion: String? = null): Flow<WatchEvent<Service>>`
+- `fun watchDeployments(namespace: String = defaultNamespace, labelSelector: String? = null, resourceVersion: String? = null): Flow<WatchEvent<Deployment>>`
+
+#### Log Operations
+- `fun getPodLogs(name: String, namespace: String = defaultNamespace, container: String? = null, follow: Boolean = false, previous: Boolean = false, sinceSeconds: Int? = null, tailLines: Int? = null, timestamps: Boolean = false): Flow<String>`
 
 ## Requirements
 
