@@ -144,6 +144,59 @@ fun main() = runBlocking {
         val scaledDeployment = client.scaleDeployment("nginx-example-deployment", replicas = 3)
         println("Scaled deployment to ${scaledDeployment.spec?.replicas} replicas")
 
+        // List resource quotas
+        println("\n=== Listing ResourceQuotas ===")
+        val resourceQuotas = client.listResourceQuotas()
+        resourceQuotas.items.forEach { quota ->
+            println("ResourceQuota: ${quota.metadata.name}")
+            quota.spec?.hard?.forEach { (key, value) ->
+                val used = quota.status?.used?.get(key) ?: "0"
+                println("  $key: $used / $value")
+            }
+        }
+
+        // Create a resource quota
+        println("\n=== Creating ResourceQuota ===")
+        val newResourceQuota = ResourceQuota(
+            metadata = ObjectMeta(
+                name = "example-quota",
+                labels = mapOf("example" to "true")
+            ),
+            spec = ResourceQuotaSpec(
+                hard = mapOf(
+                    "requests.cpu" to "10",
+                    "requests.memory" to "20Gi",
+                    "limits.cpu" to "20",
+                    "limits.memory" to "40Gi",
+                    "pods" to "10",
+                    "persistentvolumeclaims" to "5"
+                ),
+                scopes = listOf("NotTerminating")
+            )
+        )
+
+        val createdQuota = client.createResourceQuota(newResourceQuota)
+        println("Created resource quota: ${createdQuota.metadata.name}")
+        createdQuota.spec?.hard?.forEach { (key, value) ->
+            println("  $key: $value")
+        }
+
+        // Get resource quota details
+        println("\n=== Getting ResourceQuota Details ===")
+        val quota = client.getResourceQuota("example-quota")
+        println("ResourceQuota: ${quota.metadata.name}")
+        println("Namespace: ${quota.metadata.namespace}")
+        println("Hard limits:")
+        quota.spec?.hard?.forEach { (key, value) ->
+            println("  $key: $value")
+        }
+        if (quota.status?.used?.isNotEmpty() == true) {
+            println("Used resources:")
+            quota.status?.used?.forEach { (key, value) ->
+                println("  $key: $value")
+            }
+        }
+
         // Watch pods for changes (demonstrate for 10 seconds)
         println("\n=== Watching Pods ===")
         val watchJob = launch {
@@ -213,6 +266,9 @@ fun main() = runBlocking {
 
         client.deleteService("nginx-example-service")
         println("Deleted service")
+
+        client.deleteResourceQuota("example-quota")
+        println("Deleted resource quota")
 
         client.deletePod("nginx-example", gracePeriodSeconds = 0)
         println("Deleted pod")
