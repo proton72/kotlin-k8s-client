@@ -47,10 +47,24 @@ tasks.test {
     useJUnitPlatform()
 }
 
+// Create sources JAR
+val sourcesJar by tasks.registering(Jar::class) {
+    archiveClassifier.set("sources")
+    from(sourceSets["main"].allSource)
+}
+
+// Create javadoc JAR (empty for Kotlin projects, but required by Maven Central)
+val javadocJar by tasks.registering(Jar::class) {
+    archiveClassifier.set("javadoc")
+    from(tasks.named("javadoc"))
+}
+
 publishing {
     publications {
         create<MavenPublication>("maven") {
             from(components["java"])
+            artifact(sourcesJar)
+            artifact(javadocJar)
 
             pom {
                 name.set("Kotlin K8s Client")
