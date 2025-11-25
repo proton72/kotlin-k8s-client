@@ -1,7 +1,10 @@
+import java.util.Base64
+
 plugins {
     kotlin("jvm") version "2.2.20"
     kotlin("plugin.serialization") version "2.2.20"
     `maven-publish`
+    signing
 }
 
 group = "io.github.proton72"
@@ -85,5 +88,35 @@ publishing {
                 password = System.getenv("GITHUB_TOKEN") ?: project.findProperty("gpr.token") as String?
             }
         }
+
+        maven {
+            name = "SonatypeCentral"
+            url = uri("https://central.sonatype.com/api/v1/publisher")
+            credentials {
+                username = System.getenv("SONATYPE_USERNAME") ?: project.findProperty("sonatype.username") as String?
+                password = System.getenv("SONATYPE_PASSWORD") ?: project.findProperty("sonatype.password") as String?
+            }
+        }
     }
+}
+
+signing {
+    // Sign only if signing key is available (e.g., in CI or when explicitly configured)
+    val hasSigningKey = project.hasProperty("signing.keyId") ||
+                        System.getenv("GPG_PRIVATE_KEY") != null ||
+                        System.getenv("GPG_PRIVATE_KEY_BASE64") != null
+    isRequired = hasSigningKey
+
+    // Support both plain and base64-encoded GPG keys (for GitHub Secrets)
+    val signingKey: String? = System.getenv("GPG_PRIVATE_KEY")
+        ?: System.getenv("GPG_PRIVATE_KEY_BASE64")?.let { base64Key ->
+            String(Base64.getDecoder().decode(base64Key))
+        }
+    val signingPassword: String? = System.getenv("GPG_PASSWORD") ?: System.getenv("GPG_PASSPHRASE")
+
+    if (signingKey != null && signingPassword != null) {
+        useInMemoryPgpKeys(signingKey, signingPassword)
+    }
+
+    sign(publishing.publications["maven"])
 }
