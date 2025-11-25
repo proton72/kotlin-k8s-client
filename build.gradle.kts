@@ -5,6 +5,7 @@ plugins {
     kotlin("plugin.serialization") version "2.2.20"
     `maven-publish`
     signing
+    id("io.github.gradle-nexus.publish-plugin") version "2.0.0"
 }
 
 group = "io.github.proton72"
@@ -88,15 +89,6 @@ publishing {
                 password = System.getenv("GITHUB_TOKEN") ?: project.findProperty("gpr.token") as String?
             }
         }
-
-        maven {
-            name = "SonatypeCentral"
-            url = uri("https://central.sonatype.com/api/v1/publisher")
-            credentials {
-                username = System.getenv("SONATYPE_USERNAME") ?: project.findProperty("sonatype.username") as String?
-                password = System.getenv("SONATYPE_PASSWORD") ?: project.findProperty("sonatype.password") as String?
-            }
-        }
     }
 }
 
@@ -119,4 +111,15 @@ signing {
     }
 
     sign(publishing.publications["maven"])
+}
+
+nexusPublishing {
+    repositories {
+        sonatype {
+            nexusUrl.set(uri("https://s01.oss.sonatype.org/service/local/"))
+            snapshotRepositoryUrl.set(uri("https://s01.oss.sonatype.org/content/repositories/snapshots/"))
+            username.set(System.getenv("SONATYPE_USERNAME") ?: project.findProperty("sonatype.username") as String?)
+            password.set(System.getenv("SONATYPE_PASSWORD") ?: project.findProperty("sonatype.password") as String?)
+        }
+    }
 }

@@ -199,7 +199,7 @@ jobs:
         SONATYPE_PASSWORD: ${{ secrets.SONATYPE_PASSWORD }}
         GPG_PRIVATE_KEY_BASE64: ${{ secrets.GPG_PRIVATE_KEY_BASE64 }}
         GPG_PASSPHRASE: ${{ secrets.GPG_PASSPHRASE }}
-      run: gradle publishMavenPublicationToSonatypeCentralRepository --no-daemon --stacktrace
+      run: gradle publishToSonatype closeAndReleaseSonatypeStagingRepository --no-daemon --stacktrace
 
     - name: Report status
       if: always()
