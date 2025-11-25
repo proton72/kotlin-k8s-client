@@ -2,6 +2,7 @@ plugins {
     kotlin("jvm") version "2.2.20"
     kotlin("plugin.serialization") version "2.2.20"
     `maven-publish`
+    signing
 }
 
 group = "io.github.proton72"
@@ -85,5 +86,28 @@ publishing {
                 password = System.getenv("GITHUB_TOKEN") ?: project.findProperty("gpr.token") as String?
             }
         }
+
+        maven {
+            name = "SonatypeCentral"
+            url = uri("https://central.sonatype.com/api/v1/publisher")
+            credentials {
+                username = System.getenv("SONATYPE_USERNAME") ?: project.findProperty("sonatype.username") as String?
+                password = System.getenv("SONATYPE_PASSWORD") ?: project.findProperty("sonatype.password") as String?
+            }
+        }
     }
+}
+
+signing {
+    // Sign only if signing key is available (e.g., in CI or when explicitly configured)
+    isRequired = project.hasProperty("signing.keyId") || System.getenv("GPG_PRIVATE_KEY") != null
+
+    // Use in-memory ASCII-armored key if provided via environment variable
+    val signingKey = System.getenv("GPG_PRIVATE_KEY")
+    val signingPassword = System.getenv("GPG_PASSWORD")
+    if (signingKey != null && signingPassword != null) {
+        useInMemoryPgpKeys(signingKey, signingPassword)
+    }
+
+    sign(publishing.publications["maven"])
 }
