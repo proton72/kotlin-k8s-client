@@ -1,3 +1,5 @@
+import java.util.Base64
+
 plugins {
     kotlin("jvm") version "2.2.20"
     kotlin("plugin.serialization") version "2.2.20"
@@ -106,11 +108,11 @@ signing {
     isRequired = hasSigningKey
 
     // Support both plain and base64-encoded GPG keys (for GitHub Secrets)
-    val signingKey = System.getenv("GPG_PRIVATE_KEY")
+    val signingKey: String? = System.getenv("GPG_PRIVATE_KEY")
         ?: System.getenv("GPG_PRIVATE_KEY_BASE64")?.let { base64Key ->
-            String(java.util.Base64.getDecoder().decode(base64Key))
+            String(Base64.getDecoder().decode(base64Key))
         }
-    val signingPassword = System.getenv("GPG_PASSWORD") ?: System.getenv("GPG_PASSPHRASE")
+    val signingPassword: String? = System.getenv("GPG_PASSWORD") ?: System.getenv("GPG_PASSPHRASE")
 
     if (signingKey != null && signingPassword != null) {
         useInMemoryPgpKeys(signingKey, signingPassword)
