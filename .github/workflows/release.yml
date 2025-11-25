@@ -60,7 +60,15 @@ jobs:
       env:
         GITHUB_ACTOR: ${{ github.actor }}
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      run: gradle publish --no-daemon --stacktrace
+      run: gradle publishMavenPublicationToGitHubPackagesRepository --no-daemon --stacktrace
+
+    - name: Publish to Sonatype Central
+      env:
+        SONATYPE_USERNAME: ${{ secrets.SONATYPE_USERNAME }}
+        SONATYPE_PASSWORD: ${{ secrets.SONATYPE_PASSWORD }}
+        GPG_PRIVATE_KEY_BASE64: ${{ secrets.GPG_PRIVATE_KEY_BASE64 }}
+        GPG_PASSPHRASE: ${{ secrets.GPG_PASSPHRASE }}
+      run: gradle publishMavenPublicationToSonatypeCentralRepository --no-daemon --stacktrace
 
     - name: Upload build artifacts
       uses: actions/upload-artifact@v4

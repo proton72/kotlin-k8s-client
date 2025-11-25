@@ -100,11 +100,18 @@ publishing {
 
 signing {
     // Sign only if signing key is available (e.g., in CI or when explicitly configured)
-    isRequired = project.hasProperty("signing.keyId") || System.getenv("GPG_PRIVATE_KEY") != null
+    val hasSigningKey = project.hasProperty("signing.keyId") ||
+                        System.getenv("GPG_PRIVATE_KEY") != null ||
+                        System.getenv("GPG_PRIVATE_KEY_BASE64") != null
+    isRequired = hasSigningKey
 
-    // Use in-memory ASCII-armored key if provided via environment variable
+    // Support both plain and base64-encoded GPG keys (for GitHub Secrets)
     val signingKey = System.getenv("GPG_PRIVATE_KEY")
-    val signingPassword = System.getenv("GPG_PASSWORD")
+        ?: System.getenv("GPG_PRIVATE_KEY_BASE64")?.let { base64Key ->
+            String(java.util.Base64.getDecoder().decode(base64Key))
+        }
+    val signingPassword = System.getenv("GPG_PASSWORD") ?: System.getenv("GPG_PASSPHRASE")
+
     if (signingKey != null && signingPassword != null) {
         useInMemoryPgpKeys(signingKey, signingPassword)
     }
