@@ -217,18 +217,20 @@ client.deletePod(
 
 #### Update a Pod
 
-**Note:** Most Pod spec fields are immutable after creation. The `updatePod` method has limited use cases.
-For updating labels or annotations, use the `patchPodMetadata` method instead.
+The `updatePod` method now uses Strategic Merge Patch to safely update mutable pod fields (labels, annotations, container images).
 
 ```kotlin
 val pod = client.getPod("my-pod", "default")
 val updatedPod = pod.copy(
     metadata = pod.metadata.copy(
-        labels = mapOf("app" to "updated")
+        labels = mapOf("app" to "updated", "env" to "production")
     )
 )
+// This now safely updates only labels without touching immutable fields
 client.updatePod(updatedPod, "default")
 ```
+
+**Note:** For clarity when updating only labels/annotations, prefer using `patchPodMetadata` or `addPodLabels`.
 
 #### Update Pod Labels
 
