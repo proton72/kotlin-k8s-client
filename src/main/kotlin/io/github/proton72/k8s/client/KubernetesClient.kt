@@ -291,12 +291,14 @@ class KubernetesClient(
     }
 
     /**
-     * Updates an existing pod.
+     * Updates an existing pod using Strategic Merge Patch.
      *
-     * Note: Most Pod spec fields are immutable after creation. This method has limited use cases.
-     * For updating labels or annotations, use [patchPodMetadata] instead.
+     * This method now uses PATCH instead of PUT to avoid issues with immutable fields.
+     * It automatically handles updates to mutable fields like labels, annotations, and container images.
      *
-     * @param pod Pod object with updated fields
+     * Note: For updating only labels or annotations, prefer using [patchPodMetadata] for better clarity.
+     *
+     * @param pod Pod object with updated fields (only mutable fields will be applied)
      * @param namespace Kubernetes namespace (defaults to the service account namespace)
      * @return The updated Pod object
      */
@@ -304,7 +306,41 @@ class KubernetesClient(
         val name = pod.metadata.name ?: throw KubernetesException("Pod name is required")
         logger.info("Updating pod: $name in namespace: $namespace")
         val url = "$apiServer/api/v1/namespaces/$namespace/pods/$name"
-        return executeRequest(HttpMethod.Put, url, pod)
+
+        // Build a patch with only the fields that should be updated
+        // This avoids issues with immutable fields being sent back to Kubernetes
+        val patchData = buildMap<String, Any> {
+            // Include metadata (labels, annotations)
+            put("metadata", buildMap<String, Any> {
+                pod.metadata.labels?.let { put("labels", it) }
+                pod.metadata.annotations?.let { put("annotations", it) }
+            })
+
+            // Include spec fields that are mutable
+            pod.spec?.let { spec ->
+                put("spec", buildMap<String, Any> {
+                    // Container images can be updated
+                    put("containers", spec.containers.map { container ->
+                        mapOf(
+                            "name" to container.name,
+                            "image" to container.image
+                        )
+                    })
+
+                    // Init container images can be updated
+                    spec.initContainers?.let { initContainers ->
+                        put("initContainers", initContainers.map { container ->
+                            mapOf(
+                                "name" to container.name,
+                                "image" to container.image
+                            )
+                        })
+                    }
+                })
+            }
+        }
+
+        return executePatchRequest(url, patchData)
     }
 
     /**
