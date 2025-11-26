@@ -169,6 +169,40 @@ class KubernetesClient(
         }
     }
 
+    private suspend inline fun <reified T> executePatchRequest(
+        url: String,
+        patchData: Any
+    ): T {
+        try {
+            val response = httpClient.request(url) {
+                method = HttpMethod.Patch
+                headers {
+                    append("Authorization", "Bearer $token")
+                    append("Content-Type", "application/strategic-merge-patch+json")
+                }
+                setBody(patchData)
+            }
+
+            return when (response.status.value) {
+                in 200..299 -> response.body()
+                404 -> throw KubernetesNotFoundException("Resource", "unknown")
+                401, 403 -> throw KubernetesAuthenticationException("Unauthorized: ${response.status}")
+                else -> {
+                    val errorBody = try {
+                        response.bodyAsText()
+                    } catch (e: Exception) {
+                        "Unable to read error body"
+                    }
+                    throw KubernetesApiException(response.status.value, errorBody)
+                }
+            }
+        } catch (e: KubernetesException) {
+            throw e
+        } catch (e: Exception) {
+            throw KubernetesException("Request failed: ${e.message}", e)
+        }
+    }
+
     // ==================== Pod Operations ====================
 
     /**
@@ -259,6 +293,9 @@ class KubernetesClient(
     /**
      * Updates an existing pod.
      *
+     * Note: Most Pod spec fields are immutable after creation. This method has limited use cases.
+     * For updating labels or annotations, use [patchPodMetadata] instead.
+     *
      * @param pod Pod object with updated fields
      * @param namespace Kubernetes namespace (defaults to the service account namespace)
      * @return The updated Pod object
@@ -268,6 +305,77 @@ class KubernetesClient(
         logger.info("Updating pod: $name in namespace: $namespace")
         val url = "$apiServer/api/v1/namespaces/$namespace/pods/$name"
         return executeRequest(HttpMethod.Put, url, pod)
+    }
+
+    /**
+     * Patches a pod's metadata (labels and annotations) using Strategic Merge Patch.
+     * This is the recommended way to update pod labels and annotations.
+     *
+     * @param name Name of the pod to patch
+     * @param labels Labels to set (replaces existing labels)
+     * @param annotations Annotations to set (replaces existing annotations)
+     * @param namespace Kubernetes namespace (defaults to the service account namespace)
+     * @return The patched Pod object
+     */
+    suspend fun patchPodMetadata(
+        name: String,
+        labels: Map<String, String>? = null,
+        annotations: Map<String, String>? = null,
+        namespace: String = defaultNamespace
+    ): Pod {
+        logger.info("Patching pod metadata: $name in namespace: $namespace")
+        val url = "$apiServer/api/v1/namespaces/$namespace/pods/$name"
+
+        val patchData = buildMap<String, Any> {
+            put("metadata", buildMap<String, Any> {
+                labels?.let { put("labels", it) }
+                annotations?.let { put("annotations", it) }
+            })
+        }
+
+        return executePatchRequest(url, patchData)
+    }
+
+    /**
+     * Adds or updates labels on a pod without affecting existing labels not specified.
+     *
+     * @param name Name of the pod
+     * @param labels Labels to add or update
+     * @param namespace Kubernetes namespace (defaults to the service account namespace)
+     * @return The patched Pod object
+     */
+    suspend fun addPodLabels(
+        name: String,
+        labels: Map<String, String>,
+        namespace: String = defaultNamespace
+    ): Pod {
+        logger.info("Adding labels to pod: $name in namespace: $namespace")
+        val pod = getPod(name, namespace)
+        val updatedLabels = (pod.metadata.labels ?: emptyMap()).toMutableMap().apply {
+            putAll(labels)
+        }
+        return patchPodMetadata(name, labels = updatedLabels, namespace = namespace)
+    }
+
+    /**
+     * Removes labels from a pod.
+     *
+     * @param name Name of the pod
+     * @param labelKeys Keys of labels to remove
+     * @param namespace Kubernetes namespace (defaults to the service account namespace)
+     * @return The patched Pod object
+     */
+    suspend fun removePodLabels(
+        name: String,
+        labelKeys: List<String>,
+        namespace: String = defaultNamespace
+    ): Pod {
+        logger.info("Removing labels from pod: $name in namespace: $namespace")
+        val pod = getPod(name, namespace)
+        val updatedLabels = (pod.metadata.labels ?: emptyMap()).toMutableMap().apply {
+            labelKeys.forEach { remove(it) }
+        }
+        return patchPodMetadata(name, labels = updatedLabels, namespace = namespace)
     }
 
     // ==================== Service Operations ====================
