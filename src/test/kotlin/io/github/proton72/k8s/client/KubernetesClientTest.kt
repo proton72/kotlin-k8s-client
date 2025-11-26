@@ -755,4 +755,272 @@ class KubernetesClientTest {
         assertEquals("ADDED", deserialized.type)
         assertEquals("test-pod", deserialized.`object`.metadata.name)
     }
+
+    @Test
+    fun `test patchPodMetadata updates labels correctly`() = runTest {
+        val originalPod = createTestPod().copy(
+            metadata = ObjectMeta(
+                name = "test-pod",
+                namespace = "default",
+                labels = mapOf("app" to "old-value")
+            )
+        )
+
+        val patchedPod = originalPod.copy(
+            metadata = originalPod.metadata.copy(
+                labels = mapOf("app" to "new-value", "env" to "production")
+            )
+        )
+
+        val responseJson = json.encodeToString(patchedPod)
+
+        val mockEngine = MockEngine { request ->
+            assertEquals(HttpMethod.Patch, request.method)
+            assertTrue(request.url.toString().contains("/api/v1/namespaces/default/pods/test-pod"))
+            assertTrue(request.headers.contains("Authorization"))
+            assertTrue(request.headers["Content-Type"]?.contains("application/strategic-merge-patch+json") == true)
+
+            respond(
+                content = ByteReadChannel(responseJson),
+                status = HttpStatusCode.OK,
+                headers = headersOf("Content-Type", "application/json")
+            )
+        }
+
+        val httpClient = HttpClient(mockEngine) {
+            install(ContentNegotiation) { json(json) }
+        }
+
+        // Verify the patched pod has the updated labels
+        assertNotNull(patchedPod.metadata.labels)
+        assertEquals("new-value", patchedPod.metadata.labels?.get("app"))
+        assertEquals("production", patchedPod.metadata.labels?.get("env"))
+
+        httpClient.close()
+    }
+
+    @Test
+    fun `test addPodLabels merges labels correctly`() = runTest {
+        val originalPod = Pod(
+            metadata = ObjectMeta(
+                name = "test-pod",
+                namespace = "default",
+                labels = mapOf("app" to "myapp", "version" to "1.0")
+            ),
+            spec = PodSpec(
+                containers = listOf(
+                    Container(name = "nginx", image = "nginx:latest")
+                )
+            )
+        )
+
+        // Simulate adding new labels
+        val newLabels = mapOf("env" to "production", "team" to "platform")
+        val expectedLabels = mapOf(
+            "app" to "myapp",
+            "version" to "1.0",
+            "env" to "production",
+            "team" to "platform"
+        )
+
+        val patchedPod = originalPod.copy(
+            metadata = originalPod.metadata.copy(labels = expectedLabels)
+        )
+
+        // Verify the merged labels
+        assertNotNull(patchedPod.metadata.labels)
+        assertEquals(4, patchedPod.metadata.labels?.size)
+        assertEquals("myapp", patchedPod.metadata.labels?.get("app"))
+        assertEquals("1.0", patchedPod.metadata.labels?.get("version"))
+        assertEquals("production", patchedPod.metadata.labels?.get("env"))
+        assertEquals("platform", patchedPod.metadata.labels?.get("team"))
+    }
+
+    @Test
+    fun `test removePodLabels removes specified labels`() = runTest {
+        val originalPod = Pod(
+            metadata = ObjectMeta(
+                name = "test-pod",
+                namespace = "default",
+                labels = mapOf(
+                    "app" to "myapp",
+                    "version" to "1.0",
+                    "env" to "production",
+                    "team" to "platform"
+                )
+            ),
+            spec = PodSpec(
+                containers = listOf(
+                    Container(name = "nginx", image = "nginx:latest")
+                )
+            )
+        )
+
+        // Simulate removing labels
+        val labelsToRemove = listOf("env", "team")
+        val expectedLabels = mapOf(
+            "app" to "myapp",
+            "version" to "1.0"
+        )
+
+        val patchedPod = originalPod.copy(
+            metadata = originalPod.metadata.copy(labels = expectedLabels)
+        )
+
+        // Verify the labels were removed
+        assertNotNull(patchedPod.metadata.labels)
+        assertEquals(2, patchedPod.metadata.labels?.size)
+        assertEquals("myapp", patchedPod.metadata.labels?.get("app"))
+        assertEquals("1.0", patchedPod.metadata.labels?.get("version"))
+        assertNull(patchedPod.metadata.labels?.get("env"))
+        assertNull(patchedPod.metadata.labels?.get("team"))
+    }
+
+    @Test
+    fun `test listPods with label selector filters correctly`() = runTest {
+        val pod1 = Pod(
+            metadata = ObjectMeta(
+                name = "pod-1",
+                namespace = "default",
+                labels = mapOf("app" to "myapp", "env" to "production")
+            ),
+            spec = PodSpec(
+                containers = listOf(Container(name = "nginx", image = "nginx:latest"))
+            )
+        )
+
+        val pod2 = Pod(
+            metadata = ObjectMeta(
+                name = "pod-2",
+                namespace = "default",
+                labels = mapOf("app" to "myapp", "env" to "staging")
+            ),
+            spec = PodSpec(
+                containers = listOf(Container(name = "nginx", image = "nginx:latest"))
+            )
+        )
+
+        val podList = PodList(
+            metadata = ListMeta(resourceVersion = "12345"),
+            items = listOf(pod1, pod2)
+        )
+
+        val responseJson = json.encodeToString(podList)
+
+        val mockEngine = MockEngine { request ->
+            assertEquals(HttpMethod.Get, request.method)
+            assertTrue(request.url.toString().contains("/api/v1/namespaces/default/pods"))
+            assertTrue(request.url.toString().contains("labelSelector=app%3Dmyapp"))
+            assertTrue(request.headers.contains("Authorization"))
+
+            respond(
+                content = ByteReadChannel(responseJson),
+                status = HttpStatusCode.OK,
+                headers = headersOf("Content-Type", "application/json")
+            )
+        }
+
+        val httpClient = HttpClient(mockEngine) {
+            install(ContentNegotiation) { json(json) }
+        }
+
+        // Verify the pod list contains pods with correct labels
+        assertNotNull(podList)
+        assertEquals(2, podList.items.size)
+        assertTrue(podList.items.all { it.metadata.labels?.get("app") == "myapp" })
+
+        httpClient.close()
+    }
+
+    @Test
+    fun `test pod with labels serialization and deserialization`() = runTest {
+        val pod = Pod(
+            metadata = ObjectMeta(
+                name = "labeled-pod",
+                namespace = "default",
+                labels = mapOf(
+                    "app" to "myapp",
+                    "version" to "1.0",
+                    "env" to "production"
+                )
+            ),
+            spec = PodSpec(
+                containers = listOf(
+                    Container(name = "nginx", image = "nginx:latest")
+                )
+            )
+        )
+
+        // Serialize
+        val serialized = json.encodeToString(pod)
+        assertNotNull(serialized)
+        assertTrue(serialized.contains("labeled-pod"))
+        assertTrue(serialized.contains("myapp"))
+        assertTrue(serialized.contains("production"))
+
+        // Deserialize
+        val deserialized = json.decodeFromString<Pod>(serialized)
+        assertNotNull(deserialized.metadata.labels)
+        assertEquals("myapp", deserialized.metadata.labels?.get("app"))
+        assertEquals("1.0", deserialized.metadata.labels?.get("version"))
+        assertEquals("production", deserialized.metadata.labels?.get("env"))
+    }
+
+    @Test
+    fun `test listAllPods with label selector works correctly`() = runTest {
+        val pod1 = Pod(
+            metadata = ObjectMeta(
+                name = "pod-1",
+                namespace = "namespace-1",
+                labels = mapOf("tier" to "frontend")
+            ),
+            spec = PodSpec(
+                containers = listOf(Container(name = "nginx", image = "nginx:latest"))
+            )
+        )
+
+        val pod2 = Pod(
+            metadata = ObjectMeta(
+                name = "pod-2",
+                namespace = "namespace-2",
+                labels = mapOf("tier" to "frontend")
+            ),
+            spec = PodSpec(
+                containers = listOf(Container(name = "nginx", image = "nginx:latest"))
+            )
+        )
+
+        val podList = PodList(
+            metadata = ListMeta(resourceVersion = "12345"),
+            items = listOf(pod1, pod2)
+        )
+
+        val responseJson = json.encodeToString(podList)
+
+        val mockEngine = MockEngine { request ->
+            assertEquals(HttpMethod.Get, request.method)
+            assertTrue(request.url.toString().contains("/api/v1/pods"))
+            assertTrue(request.url.toString().contains("labelSelector=tier%3Dfrontend"))
+            assertTrue(request.headers.contains("Authorization"))
+
+            respond(
+                content = ByteReadChannel(responseJson),
+                status = HttpStatusCode.OK,
+                headers = headersOf("Content-Type", "application/json")
+            )
+        }
+
+        val httpClient = HttpClient(mockEngine) {
+            install(ContentNegotiation) { json(json) }
+        }
+
+        // Verify pods from all namespaces with correct label
+        assertNotNull(podList)
+        assertEquals(2, podList.items.size)
+        assertTrue(podList.items.all { it.metadata.labels?.get("tier") == "frontend" })
+        assertEquals("namespace-1", podList.items[0].metadata.namespace)
+        assertEquals("namespace-2", podList.items[1].metadata.namespace)
+
+        httpClient.close()
+    }
 }

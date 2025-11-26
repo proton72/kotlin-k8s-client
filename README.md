@@ -11,6 +11,7 @@ A lightweight, type-safe Kubernetes client library for Kotlin using Ktor HTTP cl
 - **In-cluster support**: Automatic service account authentication when running in Kubernetes
 - **Manual configuration**: Support for custom API server and token configuration
 - **Comprehensive API coverage**: Support for Pods, Services, and Deployments
+- **Label Management**: Add, update, remove, and search resources by labels
 - **Watch API**: Real-time monitoring of resource changes (ADDED, MODIFIED, DELETED events)
 - **Pod Logs**: Stream pod logs with follow, tail, timestamps, and filtering options
 - **SSL/TLS support**: Proper certificate validation with custom CA support
@@ -216,6 +217,9 @@ client.deletePod(
 
 #### Update a Pod
 
+**Note:** Most Pod spec fields are immutable after creation. The `updatePod` method has limited use cases.
+For updating labels or annotations, use the `patchPodMetadata` method instead.
+
 ```kotlin
 val pod = client.getPod("my-pod", "default")
 val updatedPod = pod.copy(
@@ -224,6 +228,57 @@ val updatedPod = pod.copy(
     )
 )
 client.updatePod(updatedPod, "default")
+```
+
+#### Update Pod Labels
+
+Use `patchPodMetadata` to update pod labels and annotations. This is the recommended way:
+
+```kotlin
+// Replace all labels on a pod
+val patchedPod = client.patchPodMetadata(
+    name = "my-pod",
+    labels = mapOf("app" to "myapp", "env" to "production"),
+    namespace = "default"
+)
+
+// Add or update specific labels (merges with existing labels)
+val podWithNewLabels = client.addPodLabels(
+    name = "my-pod",
+    labels = mapOf("team" to "platform", "version" to "1.0"),
+    namespace = "default"
+)
+
+// Remove specific labels
+val podWithoutLabels = client.removePodLabels(
+    name = "my-pod",
+    labelKeys = listOf("old-label", "deprecated-label"),
+    namespace = "default"
+)
+
+// Update annotations
+val podWithAnnotations = client.patchPodMetadata(
+    name = "my-pod",
+    annotations = mapOf("description" to "Updated pod"),
+    namespace = "default"
+)
+```
+
+#### Search Pods by Label
+
+```kotlin
+// Find all pods with a specific label
+val webPods = client.listPods("default", labelSelector = "app=web")
+
+// Multiple label selectors (AND condition)
+val prodWebPods = client.listPods("default", labelSelector = "app=web,env=production")
+
+// Search across all namespaces
+val allWebPods = client.listAllPods(labelSelector = "app=web")
+
+// Label selectors support various operators
+val newPods = client.listPods("default", labelSelector = "version!=1.0")
+val podsByTier = client.listPods("default", labelSelector = "tier in (frontend,backend)")
 ```
 
 ### Service Operations
