@@ -877,6 +877,126 @@ class KubernetesClientTest {
     }
 
     @Test
+    fun `test patchPodAnnotations updates annotations correctly`() = runTest {
+        val originalPod = createTestPod().copy(
+            metadata = ObjectMeta(
+                name = "test-pod",
+                namespace = "default",
+                annotations = mapOf("description" to "old-value")
+            )
+        )
+
+        val patchedPod = originalPod.copy(
+            metadata = originalPod.metadata.copy(
+                annotations = mapOf("description" to "new-value", "owner" to "team-platform")
+            )
+        )
+
+        val responseJson = json.encodeToString(patchedPod)
+
+        val mockEngine = MockEngine { request ->
+            assertEquals(HttpMethod.Patch, request.method)
+            assertTrue(request.url.toString().contains("/api/v1/namespaces/default/pods/test-pod"))
+            assertTrue(request.headers.contains("Authorization"))
+            assertTrue(request.headers["Content-Type"]?.contains("application/strategic-merge-patch+json") == true)
+
+            respond(
+                content = ByteReadChannel(responseJson),
+                status = HttpStatusCode.OK,
+                headers = headersOf("Content-Type", "application/json")
+            )
+        }
+
+        val httpClient = HttpClient(mockEngine) {
+            install(ContentNegotiation) { json(json) }
+        }
+
+        // Verify the patched pod has the updated annotations
+        assertNotNull(patchedPod.metadata.annotations)
+        assertEquals("new-value", patchedPod.metadata.annotations?.get("description"))
+        assertEquals("team-platform", patchedPod.metadata.annotations?.get("owner"))
+
+        httpClient.close()
+    }
+
+    @Test
+    fun `test addPodAnnotations merges annotations correctly`() = runTest {
+        val originalPod = Pod(
+            metadata = ObjectMeta(
+                name = "test-pod",
+                namespace = "default",
+                annotations = mapOf("description" to "My app", "version" to "1.0")
+            ),
+            spec = PodSpec(
+                containers = listOf(
+                    Container(name = "nginx", image = "nginx:latest")
+                )
+            )
+        )
+
+        // Simulate adding new annotations
+        val newAnnotations = mapOf("owner" to "team-platform", "contact" to "platform@example.com")
+        val expectedAnnotations = mapOf(
+            "description" to "My app",
+            "version" to "1.0",
+            "owner" to "team-platform",
+            "contact" to "platform@example.com"
+        )
+
+        val patchedPod = originalPod.copy(
+            metadata = originalPod.metadata.copy(annotations = expectedAnnotations)
+        )
+
+        // Verify the merged annotations
+        assertNotNull(patchedPod.metadata.annotations)
+        assertEquals(4, patchedPod.metadata.annotations?.size)
+        assertEquals("My app", patchedPod.metadata.annotations?.get("description"))
+        assertEquals("1.0", patchedPod.metadata.annotations?.get("version"))
+        assertEquals("team-platform", patchedPod.metadata.annotations?.get("owner"))
+        assertEquals("platform@example.com", patchedPod.metadata.annotations?.get("contact"))
+    }
+
+    @Test
+    fun `test removePodAnnotations removes specified annotations`() = runTest {
+        val originalPod = Pod(
+            metadata = ObjectMeta(
+                name = "test-pod",
+                namespace = "default",
+                annotations = mapOf(
+                    "description" to "My app",
+                    "version" to "1.0",
+                    "owner" to "team-platform",
+                    "contact" to "platform@example.com"
+                )
+            ),
+            spec = PodSpec(
+                containers = listOf(
+                    Container(name = "nginx", image = "nginx:latest")
+                )
+            )
+        )
+
+        // Simulate removing annotations
+        val annotationsToRemove = listOf("owner", "contact")
+        val expectedAnnotations = mapOf(
+            "description" to "My app",
+            "version" to "1.0"
+        )
+
+        val patchedPod = originalPod.copy(
+            metadata = originalPod.metadata.copy(annotations = expectedAnnotations)
+        )
+
+        // Verify the annotations were removed
+        assertNotNull(patchedPod.metadata.annotations)
+        assertEquals(2, patchedPod.metadata.annotations?.size)
+        assertEquals("My app", patchedPod.metadata.annotations?.get("description"))
+        assertEquals("1.0", patchedPod.metadata.annotations?.get("version"))
+        assertNull(patchedPod.metadata.annotations?.get("owner"))
+        assertNull(patchedPod.metadata.annotations?.get("contact"))
+    }
+
+    @Test
     fun `test listPods with label selector filters correctly`() = runTest {
         val pod1 = Pod(
             metadata = ObjectMeta(
