@@ -414,6 +414,65 @@ class KubernetesClient(
         return patchPodMetadata(name, labels = updatedLabels, namespace = namespace)
     }
 
+    /**
+     * Patches annotations on a pod without affecting existing annotations not specified.
+     *
+     * @param name Name of the pod
+     * @param annotations Annotations to set (replaces existing annotations)
+     * @param namespace Kubernetes namespace (defaults to the service account namespace)
+     * @return The patched Pod object
+     */
+    suspend fun patchPodAnnotations(
+        name: String,
+        annotations: Map<String, String>,
+        namespace: String = defaultNamespace
+    ): Pod {
+        logger.info("Patching annotations on pod: $name in namespace: $namespace")
+        return patchPodMetadata(name, annotations = annotations, namespace = namespace)
+    }
+
+    /**
+     * Adds or updates annotations on a pod without affecting existing annotations not specified.
+     *
+     * @param name Name of the pod
+     * @param annotations Annotations to add or update
+     * @param namespace Kubernetes namespace (defaults to the service account namespace)
+     * @return The patched Pod object
+     */
+    suspend fun addPodAnnotations(
+        name: String,
+        annotations: Map<String, String>,
+        namespace: String = defaultNamespace
+    ): Pod {
+        logger.info("Adding annotations to pod: $name in namespace: $namespace")
+        val pod = getPod(name, namespace)
+        val updatedAnnotations = (pod.metadata.annotations ?: emptyMap()).toMutableMap().apply {
+            putAll(annotations)
+        }
+        return patchPodMetadata(name, annotations = updatedAnnotations, namespace = namespace)
+    }
+
+    /**
+     * Removes annotations from a pod.
+     *
+     * @param name Name of the pod
+     * @param annotationKeys Keys of annotations to remove
+     * @param namespace Kubernetes namespace (defaults to the service account namespace)
+     * @return The patched Pod object
+     */
+    suspend fun removePodAnnotations(
+        name: String,
+        annotationKeys: List<String>,
+        namespace: String = defaultNamespace
+    ): Pod {
+        logger.info("Removing annotations from pod: $name in namespace: $namespace")
+        val pod = getPod(name, namespace)
+        val updatedAnnotations = (pod.metadata.annotations ?: emptyMap()).toMutableMap().apply {
+            annotationKeys.forEach { remove(it) }
+        }
+        return patchPodMetadata(name, annotations = updatedAnnotations, namespace = namespace)
+    }
+
     // ==================== Service Operations ====================
 
     /**
