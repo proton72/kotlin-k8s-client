@@ -29,7 +29,8 @@ data class PodSpec(
     val subdomain: String? = null,
     val affinity: Affinity? = null,
     val tolerations: List<Toleration>? = null,
-    val imagePullSecrets: List<LocalObjectReference>? = null
+    val imagePullSecrets: List<LocalObjectReference>? = null,
+    val priorityClassName: String? = null
 )
 
 /**

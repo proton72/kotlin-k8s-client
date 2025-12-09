@@ -339,4 +339,22 @@ class PodModelTest {
         assertEquals(1, terms.size)
         assertEquals("kubernetes.io/hostname", terms[0].matchExpressions?.get(0)?.key)
     }
+
+    @Test
+    fun `test PodSpec with priorityClassName`() {
+        val podSpec = PodSpec(
+            containers = listOf(
+                Container(
+                    name = "app",
+                    image = "myapp:1.0"
+                )
+            ),
+            priorityClassName = "high-priority"
+        )
+
+        val serialized = json.encodeToString(podSpec)
+        val deserialized = json.decodeFromString<PodSpec>(serialized)
+
+        assertEquals("high-priority", deserialized.priorityClassName)
+    }
 }
