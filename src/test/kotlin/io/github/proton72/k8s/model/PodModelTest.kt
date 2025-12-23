@@ -357,4 +357,65 @@ class PodModelTest {
 
         assertEquals("high-priority", deserialized.priorityClassName)
     }
+
+    @Test
+    fun `test PodSpec with securityContext`() {
+        val podSpec = PodSpec(
+            containers = listOf(
+                Container(
+                    name = "app",
+                    image = "myapp:1.0"
+                )
+            ),
+            securityContext = PodSecurityContext(
+                runAsUser = 1000,
+                runAsGroup = 3000,
+                fsGroup = 2000,
+                runAsNonRoot = true,
+                supplementalGroups = listOf(4000, 5000)
+            )
+        )
+
+        val serialized = json.encodeToString(podSpec)
+        val deserialized = json.decodeFromString<PodSpec>(serialized)
+
+        assertNotNull(deserialized.securityContext)
+        assertEquals(1000L, deserialized.securityContext?.runAsUser)
+        assertEquals(3000L, deserialized.securityContext?.runAsGroup)
+        assertEquals(2000L, deserialized.securityContext?.fsGroup)
+        assertEquals(true, deserialized.securityContext?.runAsNonRoot)
+        assertEquals(2, deserialized.securityContext?.supplementalGroups?.size)
+        assertEquals(4000L, deserialized.securityContext?.supplementalGroups?.get(0))
+        assertEquals(5000L, deserialized.securityContext?.supplementalGroups?.get(1))
+    }
+
+    @Test
+    fun `test PodSecurityContext with SELinux and Seccomp profiles`() {
+        val securityContext = PodSecurityContext(
+            runAsUser = 1000,
+            runAsGroup = 3000,
+            seLinuxOptions = SELinuxOptions(
+                user = "user_u",
+                role = "role_r",
+                type = "type_t",
+                level = "s0:c123,c456"
+            ),
+            seccompProfile = SeccompProfile(
+                type = "RuntimeDefault"
+            )
+        )
+
+        val serialized = json.encodeToString(securityContext)
+        val deserialized = json.decodeFromString<PodSecurityContext>(serialized)
+
+        assertEquals(1000L, deserialized.runAsUser)
+        assertEquals(3000L, deserialized.runAsGroup)
+        assertNotNull(deserialized.seLinuxOptions)
+        assertEquals("user_u", deserialized.seLinuxOptions?.user)
+        assertEquals("role_r", deserialized.seLinuxOptions?.role)
+        assertEquals("type_t", deserialized.seLinuxOptions?.type)
+        assertEquals("s0:c123,c456", deserialized.seLinuxOptions?.level)
+        assertNotNull(deserialized.seccompProfile)
+        assertEquals("RuntimeDefault", deserialized.seccompProfile?.type)
+    }
 }

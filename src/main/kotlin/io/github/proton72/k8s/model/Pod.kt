@@ -30,7 +30,8 @@ data class PodSpec(
     val affinity: Affinity? = null,
     val tolerations: List<Toleration>? = null,
     val imagePullSecrets: List<LocalObjectReference>? = null,
-    val priorityClassName: String? = null
+    val priorityClassName: String? = null,
+    val securityContext: PodSecurityContext? = null
 )
 
 /**
@@ -237,6 +238,44 @@ data class Toleration(
 @Serializable
 data class LocalObjectReference(
     val name: String
+)
+
+/**
+ * PodSecurityContext holds pod-level security attributes and common container settings.
+ * Some fields are also present in Container.securityContext.
+ * Field values from Container.securityContext take precedence over field values from PodSecurityContext.
+ */
+@Serializable
+data class PodSecurityContext(
+    val runAsUser: Long? = null,
+    val runAsGroup: Long? = null,
+    val runAsNonRoot: Boolean? = null,
+    val fsGroup: Long? = null,
+    val fsGroupChangePolicy: String? = null,
+    val supplementalGroups: List<Long>? = null,
+    val seLinuxOptions: SELinuxOptions? = null,
+    val seccompProfile: SeccompProfile? = null
+)
+
+/**
+ * SELinuxOptions are the labels to be applied to the container
+ */
+@Serializable
+data class SELinuxOptions(
+    val user: String? = null,
+    val role: String? = null,
+    val type: String? = null,
+    val level: String? = null
+)
+
+/**
+ * SeccompProfile defines a pod/container's seccomp profile settings.
+ * Only one profile source may be set.
+ */
+@Serializable
+data class SeccompProfile(
+    val type: String,
+    val localhostProfile: String? = null
 )
 
 /**
